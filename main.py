@@ -17,23 +17,33 @@ ibeacon_format = Struct(
     "power" / Int8sl,
 )
 
+last_time = -1
+second_interval = []
+
 def device_found(
     device: BLEDevice, advertisement_data: AdvertisementData
 ):
+    global last_time, second_interval
     """Decode iBeacon."""
-    formattedDate = ""
     try:
         apple_data = advertisement_data.manufacturer_data[0x004C]
         ibeacon = ibeacon_format.parse(apple_data)
         uuid = UUID(bytes=bytes(ibeacon.uuid))
-        print(f"UUID : {uuid} TxPower : {ibeacon.power} dBm RSSI : {advertisement_data.rssi} dBm ({datetime.now()} second) MAJOR: {ibeacon.major} MINOR: {ibeacon.minor}")
-        # if ibeacon.major == 41564 and ibeacon.minor == 24860:
-        #     uuid = UUID(bytes=bytes(ibeacon.uuid))
-        #     print(f"UUID : {uuid} TxPower : {ibeacon.power} dBm RSSI : {advertisement_data.rssi} dBm ({datetime.now()} second)")
+        # print(f"UUID : {uuid} TxPower : {ibeacon.power} dBm RSSI : {advertisement_data.rssi} dBm ({datetime.now()} second) MAJOR: {ibeacon.major} MINOR: {ibeacon.minor}")
+        if ibeacon.major == 41564 and ibeacon.minor == 24860:
+            detected_datetime = datetime.now().timestamp()
+            if last_time != -1:
+                second_interval.append(detected_datetime - last_time)
+                last_time = detected_datetime
+            
+            uuid = UUID(bytes=bytes(ibeacon.uuid))
+            print(f"{datetime.now()} - UUID : {uuid} TxPower : {ibeacon.power} dBm RSSI : {advertisement_data.rssi} dBm")
             # print(f"Major    : {ibeacon.major}")
             # print(f"Minor    : {ibeacon.minor}")
             # print(f"TX power : {ibeacon.power} dBm")
             # print(f"RSSI     : {device.rssi} dBm")
+        else: 
+            print(f"Not SPN BLE")
     except KeyError:
         # Apple company ID (0x004c) not found
         pass
@@ -43,9 +53,14 @@ def device_found(
 
 async def main():
     """Scan for devices."""
-    while True:
-        resu = await BleakScanner().discover(return_adv=True)
-        for deviceName, (device, AdvertisementData) in resu.items():
-            device_found(device=device, advertisement_data=AdvertisementData)
-        await asyncio.sleep(0.2)
+    try:
+        while True:
+            resu = await BleakScanner().discover(timeout=2.0, return_adv=True)
+            if not resu:
+                print(f"BLE is not found")
+            else:
+                for deviceName, (device, AdvertisementData) in resu.items():
+                    device_found(device=device, advertisement_data=AdvertisementData)
+    except KeyboardInterrupt:
+        print()
 asyncio.run(main())
